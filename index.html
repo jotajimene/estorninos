@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Estorninos</title>
+<meta name="description" content="Desde el cuarto, mira hacia afuera y suelta una palabra. Juntos trazamos una ruta que nadie dirige. A partir de Saidiya Hartman.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+/* Un cuarto arrendado en Harlem, de noche. La persiana separa el encierro del cielo;
+   afuera, las palabras se vuelven estorninos y trazan rutas que nadie dirige. */
+:root{
+  --sky:#0d1020; --sky-2:#161a30; --bone:#ece5d5; --dim:#a39cb0; --lamp:#f0b84f;
+  --slat:#ddd4c1; --slat-edge:#bfb5a0; --wall:#2a2420; --ink:#1f1a17;
+  --title:"Saira Condensed","Arial Narrow",sans-serif; --body:"Newsreader",Georgia,serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--sky);color:var(--bone);font-family:var(--body);overflow:hidden;-webkit-tap-highlight-color:transparent}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--lamp);outline-offset:3px}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#sky{z-index:0} #trail{z-index:1} #birds{z-index:2}
+
+/* persiana */
+#blind{position:fixed;inset:0;z-index:10;touch-action:none;cursor:grab;overflow:hidden}
+#blind.dragging{cursor:grabbing}
+.slat{position:absolute;left:0;right:0;background:var(--slat);border-bottom:3px solid var(--slat-edge);transform-origin:50% 0;will-change:transform}
+.cord{position:absolute;right:9%;top:0;width:2px;background:#8f8574;z-index:2}
+.cord::after{content:"";position:absolute;left:-6px;bottom:-22px;width:14px;height:22px;border-radius:7px;background:#8f8574}
+#cover{position:fixed;inset:0;z-index:11;display:flex;flex-direction:column;justify-content:center;padding:6vh max(24px,8vw);pointer-events:none;color:var(--ink);transition:opacity .6s}
+#cover h1{font-family:var(--title);font-weight:700;font-size:clamp(3.2rem,10vw,9rem);line-height:.86;margin:0 0 4vh;letter-spacing:-.01em}
+#cover blockquote{margin:0;max-width:40rem;font-size:clamp(1.25rem,2.6vw,2rem);line-height:1.3;font-style:italic}
+#cover cite{display:block;margin-top:1rem;font-style:normal;font-size:clamp(.95rem,1.4vw,1.1rem)}
+#cover .go{margin-top:5vh;font-size:clamp(1.05rem,1.8vw,1.35rem);pointer-events:auto}
+#cover .go button{background:var(--ink);color:var(--slat);border:0;border-radius:3px;padding:.75rem 1.2rem;cursor:pointer;margin-left:.6rem}
+body.open #cover{opacity:0}
+
+/* interfaz afuera */
+.ui{position:fixed;z-index:5;opacity:0;transition:opacity .8s;pointer-events:none}
+body.open .ui{opacity:1;pointer-events:auto}
+#prompt{left:0;right:0;bottom:0;padding:0 max(16px,4vw) calc(3vh + env(safe-area-inset-bottom,0px));text-align:center;font-size:clamp(1.05rem,2vw,1.5rem);pointer-events:none!important}
+#prompt b{font-weight:500;color:var(--lamp)}
+#tools{top:calc(var(--stack,0px) + 2.4vh);right:max(16px,3vw);display:flex;gap:.6rem;flex-wrap:wrap;justify-content:flex-end}
+#tools button{background:rgba(13,16,32,.72);border:1px solid rgba(236,229,213,.22);border-radius:3px;padding:.55rem .9rem;cursor:pointer;font-size:1rem}
+#tools button[aria-pressed="true"]{background:var(--bone);color:var(--ink);border-color:var(--bone)}
+#count{top:calc(var(--stack,0px) + 2.4vh);left:max(16px,3vw);font-size:1rem;color:var(--dim)}
+#count b{font-family:var(--title);font-size:2.4rem;color:var(--bone);display:block;line-height:1}
+
+/* escribir en el punto tocado */
+#write{position:fixed;z-index:20;display:none;transform:translate(-50%,-115%)}
+#write.show{display:block}
+#write form{display:flex;gap:.4rem;background:var(--bone);padding:.4rem;border-radius:4px}
+#write input{width:min(60vw,15rem);border:0;background:transparent;color:var(--ink);font-size:1.25rem;padding:.35rem .5rem;outline:none}
+#write button{border:0;background:var(--ink);color:var(--bone);border-radius:3px;padding:.35rem .8rem;cursor:pointer}
+#write::after{content:"";position:absolute;left:50%;bottom:-8px;width:12px;height:12px;background:var(--bone);transform:translateX(-50%) rotate(45deg)}
+
+/* sala (proyección) */
+#sala{display:none;left:max(16px,3vw);bottom:calc(3vh + 2.4rem);background:var(--bone);color:var(--ink);padding:.8rem;border-radius:4px;max-width:15rem}
+body.sala #sala{display:block}
+#sala p{margin:.5rem 0 0;font-size:.95rem;line-height:1.3;word-break:break-all}
+#qr{line-height:0}
+#qr img,#qr canvas{width:100%!important;height:auto!important}
+.sheet{position:fixed;inset:0;z-index:40;background:var(--sky);display:none;overflow:auto;padding:6vh max(24px,8vw)}
+.sheet.open{display:block}
+.sheet h2{font-family:var(--title);font-size:3rem;margin:0 0 1rem;line-height:.95}
+.sheet .row{display:block;width:100%;text-align:left;background:var(--sky-2);border:0;border-radius:3px;padding:.7rem .9rem;margin:0 0 .5rem;cursor:pointer;font-size:1.1rem}
+.sheet .row.off{opacity:.35;text-decoration:line-through}
+.sheet p{color:var(--dim);font-size:1.1rem;line-height:1.5;max-width:44rem}
+.hint{position:fixed;left:50%;top:3vh;transform:translateX(-50%);z-index:50;background:var(--bone);color:var(--ink);padding:.55rem 1rem;border-radius:3px;opacity:0;transition:opacity .3s;pointer-events:none;font-size:1rem;text-align:center;max-width:90vw}
+.hint.show{opacity:1}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+</head>
+<body>
+<canvas id="sky"></canvas>
+<canvas id="trail"></canvas>
+<canvas id="birds"></canvas>
+
+<div class="ui" id="count"><b id="n">0</b>palabras en vuelo</div>
+<div class="ui" id="tools">
+  <button type="button" id="viewBtn" aria-pressed="false">Ver palabras</button>
+  <button type="button" id="saveBtn">Guardar la ruta</button>
+</div>
+<div class="ui" id="prompt">Toca un punto del cielo y <b>suelta una palabra</b>. Ahí nace tu estornino.</div>
+<div class="ui" id="sala"><div id="qr"></div><p id="url"></p></div>
+
+<div id="blind" role="button" tabindex="0" aria-label="Persiana. Arrástrala hacia arriba o presiona Enter para abrirla."></div>
+<div id="cover">
+  <h1>Estorninos</h1>
+  <blockquote>«El camino errante que sigue el enjambre sin dirigente, en busca de un lugar mejor.»
+    <cite>Saidiya Hartman, «Rebeldía y descarrío: una entrada breve sobre lo posible»</cite></blockquote>
+  <div class="go">Arrastra la persiana hacia arriba <button type="button" id="openBtn">o ábrela aquí</button></div>
+</div>
+
+<div id="write"><form id="wform" autocomplete="off">
+  <label class="sr" for="word">Tu palabra</label>
+  <input id="word" maxlength="40" placeholder="una palabra">
+  <button type="submit">Soltar</button>
+</form></div>
+
+<section class="sheet" id="mod"><h2>Palabras</h2><p>Clic para ocultar o mostrar una palabra en esta pantalla. No se borra de la hoja.</p><div id="modlist"></div></section>
+<div class="hint" id="hint" role="status"></div>
+
+<script>
+/* ===== Configuración: el formulario de Google es el archivo común ===== */
+const FORM_POST = "https://docs.google.com/forms/d/e/1FAIpQLSeuM8SjIqUUAp_e6zFr_x0XmE4-vUiPkGDicT3waSm_1wJHFw/formResponse";
+const F_WHERE = "entry.564085840", F_TEXT = "entry.1857547124", WHERE_VALUE = "La serie (una palabra)";
+const SHEET_ID = "1qoyJNE1nH9zLJPd6_Wkhdjl8Sd2J8426j7XvVmhkIZs", SHEET_GID = "1477491231";
+const POLL_MS = 3000;
+const SEED = ["errante","fugitiva","indisciplinada","anárquica","obstinada","imprudente","problemática","alborotadora","revoltosa","insurrecta","desenfrenada"];
+
+const $ = id => document.getElementById(id);
+const SALA = new URLSearchParams(location.search).has("sala");
+if(SALA) document.body.classList.add("sala");
+const store = {get(k,d){try{const v=localStorage.getItem("estor:"+k);return v==null?d:JSON.parse(v)}catch(e){return d}}, set(k,v){try{localStorage.setItem("estor:"+k,JSON.stringify(v))}catch(e){}}};
+let cutoff = store.get("cutoff",0), hidden = new Set(store.get("hidden",[]));
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+function hint(m,ms=2600){const h=$("hint");h.textContent=m;h.classList.add("show");clearTimeout(hint.t);hint.t=setTimeout(()=>h.classList.remove("show"),ms)}
+
+/* ===== Lienzos ===== */
+const sky=$("sky"), trail=$("trail"), birdsC=$("birds");
+const sx=sky.getContext("2d"), tx=trail.getContext("2d"), bx=birdsC.getContext("2d");
+let W=0,H=0,DPR=1, HORIZON=0;
+function resize(){
+  DPR=Math.min(2,devicePixelRatio||1); W=innerWidth; H=innerHeight; HORIZON=H*0.78;
+  for(const c of [sky,trail,birdsC]){ c.width=W*DPR; c.height=H*DPR; c.getContext("2d").setTransform(DPR,0,0,DPR,0,0); }
+  drawSky(); layoutBlind();
+}
+// cielo y techos de Harlem: edificios de ladrillo, estanques de agua, algunas ventanas encendidas
+let city=null;
+function makeCity(){
+  const r = mulberry(1917); const b=[]; let x=-20;
+  while(x<W+40){ const w=60+r()*120, h=H*0.08+r()*H*0.16; b.push({x,w,h,tank:r()<0.35,tx:x+w*(0.2+r()*0.5),win:[...Array(Math.floor(w/22)*Math.floor(h/26))].map(()=>r()<0.18)}); x+=w+(r()<0.3?6:0); }
+  return b;
+}
+function mulberry(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function drawSky(){
+  city = makeCity();
+  sx.fillStyle="#0d1020"; sx.fillRect(0,0,W,H);
+  const r=mulberry(7); sx.fillStyle="rgba(236,229,213,.55)";
+  for(let i=0;i<140;i++){ const s=r()<.1?1.6:0.9; sx.fillRect(r()*W, r()*HORIZON*0.9, s, s); }
+  for(const bd of city){
+    const top=H-bd.h; sx.fillStyle="#07080f"; sx.fillRect(bd.x,top,bd.w,bd.h);
+    if(bd.tank){ sx.fillRect(bd.tx,top-26,22,18); sx.fillRect(bd.tx+3,top-8,2,8); sx.fillRect(bd.tx+17,top-8,2,8); sx.beginPath(); sx.moveTo(bd.tx-2,top-26); sx.lineTo(bd.tx+11,top-36); sx.lineTo(bd.tx+24,top-26); sx.fill(); }
+    let k=0; const cols=Math.floor(bd.w/22), rows=Math.floor(bd.h/26);
+    for(let j=0;j<rows;j++) for(let i=0;i<cols;i++,k++){ if(bd.win[k]){ sx.fillStyle="rgba(240,184,79,.75)"; sx.fillRect(bd.x+8+i*22, top+10+j*26, 9, 12); } }
+  }
+}
+
+/* ===== Persiana ===== */
+const blind=$("blind"); const SLATS=[]; let openF=0, target=0, dragging=false, startY=0, startF=0, opened=false;
+function layoutBlind(){
+  blind.innerHTML=""; SLATS.length=0;
+  const h = Math.max(34, Math.round(H/22)), n = Math.ceil(H/h)+1;
+  for(let i=0;i<n;i++){ const s=document.createElement("div"); s.className="slat"; s.style.height=h+"px"; blind.appendChild(s); SLATS.push({el:s,h,i}); }
+  const c=document.createElement("div"); c.className="cord"; blind.appendChild(c); SLATS.cord=c;
+  paintBlind();
+}
+function paintBlind(){
+  // primer tercio: las lamas giran y dejan ver el cielo; después la persiana sube y queda recogida arriba
+  const tilt=Math.min(1,openF*3), raise=Math.max(0,(openF-0.33)/0.67);
+  const stack = 7; // la persiana nunca desaparece: queda un paquete de lamas arriba
+  SLATS.forEach(s=>{
+    const y0 = s.i*s.h, yStack = Math.min(s.i,40)*stack*(s.h/40);
+    const y = y0 + (yStack - y0)*raise;
+    const sc = 1 - 0.8*tilt*(1-raise) - (raise>0? 0.8*(1-raise):0) ;
+    s.el.style.transform = `translateY(${y}px) scaleY(${Math.max(0.12, raise>0.98?0.2:sc)})`;
+  });
+  const cordLen = Math.max(40, H*0.35*(1-raise) + (SLATS.length? Math.min(SLATS.length,40)*stack*(SLATS[0].h/40):0));
+  SLATS.cord.style.height = cordLen+"px";
+  blind.style.pointerEvents = raise>0.95 ? "none" : "auto";
+  STACK_H = SLATS.length ? Math.min(SLATS.length,40)*stack*(SLATS[0].h/40) + SLATS[0].h*0.2 : 0;
+  document.documentElement.style.setProperty('--stack', (STACK_H*raise + (1-raise)*0)+'px');
+  if(openF>0.97 && !opened){ opened=true; document.body.classList.add("open"); blind.setAttribute("aria-hidden","true"); if(!seenHint){ seenHint=true; setTimeout(()=>hint(SALA?"La sala está abierta.":"Toca un punto del cielo para soltar tu palabra.",3500),600);} }
+}
+let seenHint=false, STACK_H=0;
+function animBlind(){ openF += (target-openF)*0.12; if(Math.abs(target-openF)<0.001) openF=target; paintBlind(); requestAnimationFrame(animBlind); }
+blind.addEventListener("pointerdown",e=>{dragging=true;startY=e.clientY;startF=target;blind.classList.add("dragging");blind.setPointerCapture(e.pointerId)});
+blind.addEventListener("pointermove",e=>{ if(!dragging) return; target=Math.max(0,Math.min(1,startF+(startY-e.clientY)/(H*0.8))); });
+blind.addEventListener("pointerup",()=>{dragging=false;blind.classList.remove("dragging"); target = target>0.45?1:target; });
+blind.addEventListener("wheel",e=>{ target=Math.max(0,Math.min(1,target+e.deltaY/1200)); if(target>0.45) target=1; },{passive:true});
+blind.addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); target=1; } });
+$("openBtn").addEventListener("click",()=>target=1);
+
+/* ===== Bandada ===== */
+const flock=[];        // estorninos: {cid,x,y,vx,vy,px,py}
+const words=new Map(); // cid -> {id,word,x,y,ts,seed}
+let routeIdx=0, routeT=0, focus=null; // focus: punto que la bandada visita ahora
+function addWord(c){
+  if(words.has(c.id)) return; words.set(c.id,c);
+  const n = c.seed ? 5 : Math.max(5, Math.min(18, [...c.word].length+3)); // una palabra, tantos estorninos como sus letras
+  for(let i=0;i<n;i++){ const a=Math.random()*6.283, s=1+Math.random()*2;
+    const x=c.x*W, y=c.y*HORIZON; flock.push({cid:c.id,x,y,px:x,py:y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,mv:2.6+Math.random()*1.2}); }
+  if(!c.seed){ focus={x:c.x*W,y:c.y*HORIZON,until:performance.now()+6000}; }
+  renderCount();
+}
+function removeWord(id){ words.delete(id); for(let i=flock.length-1;i>=0;i--) if(flock[i].cid===id) flock.splice(i,1); renderCount(); }
+SEED.forEach((w,i)=>addWord({id:"seed"+i,word:w,x:0.2+Math.random()*0.6,y:0.25+Math.random()*0.4,ts:0,seed:true}));
+function route(){ return [...words.values()].filter(w=>!w.seed).sort((a,b)=>a.ts-b.ts); }
+function currentTarget(now){
+  if(focus && now<focus.until) return focus;
+  const r=route();
+  if(!r.length){ const t=now/9000; return {x:W*(0.5+0.28*Math.cos(t)), y:HORIZON*(0.45+0.2*Math.sin(t*1.7))}; }
+  if(now-routeT>7000){ routeT=now; routeIdx=(routeIdx+1)%r.length; }
+  const p=r[routeIdx%r.length]; return {x:p.x*W,y:p.y*HORIZON};
+}
+let showWords=false;
+const grid=new Map(), CELL=60;
+function step(now){
+  const T=currentTarget(now);
+  grid.clear();
+  for(const b of flock){ const k=((b.x/CELL)|0)+","+((b.y/CELL)|0); let g=grid.get(k); if(!g){g=[];grid.set(k,g);} g.push(b); }
+  const minV=1.3;
+  for(const b of flock){
+    let ax=0,ay=0,cx=0,cy=0,avx=0,avy=0,n=0;
+    const gx=(b.x/CELL)|0, gy=(b.y/CELL)|0;
+    for(let i=-1;i<=1;i++) for(let j=-1;j<=1;j++){ const g=grid.get((gx+i)+","+(gy+j)); if(!g) continue;
+      for(const o of g){ if(o===b) continue; const dx=o.x-b.x, dy=o.y-b.y, d2=dx*dx+dy*dy; if(d2>CELL*CELL) continue;
+        n++; cx+=o.x; cy+=o.y; avx+=o.vx; avy+=o.vy; if(d2<11*11){ const d=Math.sqrt(d2)||1; ax-=dx/d*0.25; ay-=dy/d*0.25; } } }
+    if(n){ ax+=(cx/n-b.x)*0.004; ay+=(cy/n-b.y)*0.004; ax+=(avx/n-b.vx)*0.06; ay+=(avy/n-b.vy)*0.06; }
+    const tdx=T.x-b.x, tdy=T.y-b.y, td=Math.hypot(tdx,tdy)||1; ax+=tdx/td*0.045; ay+=tdy/td*0.045;
+    ax+=(Math.random()-.5)*0.3; ay+=(Math.random()-.5)*0.3;
+    if(b.y>HORIZON-30) ay-=0.25; if(b.y<STACK_H+30) ay+=0.25; if(b.x<10) ax+=0.2; if(b.x>W-10) ax-=0.2;
+    const maxV=b.mv; b.vx+=ax; b.vy+=ay; const sp=Math.hypot(b.vx,b.vy); if(sp>maxV){b.vx*=maxV/sp;b.vy*=maxV/sp} if(sp<minV){b.vx*=minV/sp;b.vy*=minV/sp}
+    b.px=b.x; b.py=b.y; if(!reduce){ b.x+=b.vx; b.y+=b.vy; }
+  }
+}
+let frame=0;
+function draw(now){
+  frame++;
+  // la estela se acumula como en una larga exposición y se desvanece muy lento
+  tx.globalCompositeOperation="destination-out"; tx.fillStyle = frame%120===0 ? "rgba(0,0,0,.08)" : "rgba(0,0,0,.004)"; tx.fillRect(0,0,W,H); tx.globalCompositeOperation="source-over";
+  if(opened){ tx.strokeStyle="rgba(240,184,79,.16)"; tx.lineWidth=1; tx.beginPath(); for(const b of flock){ if(words.get(b.cid)?.seed) continue; tx.moveTo(b.px,b.py); tx.lineTo(b.x,b.y);} tx.stroke(); }
+  bx.clearRect(0,0,W,H);
+  // los puntos de la ruta: cada lugar que alguien tocó
+  for(const p of route()){ bx.fillStyle="rgba(240,184,79,.9)"; bx.beginPath(); bx.arc(p.x*W,p.y*HORIZON,2.4,0,6.283); bx.fill(); }
+  if(!showWords){
+    bx.fillStyle="#ece5d5";
+    for(const b of flock){ const a=Math.atan2(b.vy,b.vx), f=Math.sin(now/90+b.x*.05)*0.5+0.5;
+      bx.save(); bx.translate(b.x,b.y); bx.rotate(a); bx.beginPath();
+      bx.moveTo(4,0); bx.lineTo(-3,-3.5-f*1.5); bx.lineTo(-1.5,0); bx.lineTo(-3,3.5+f*1.5); bx.closePath(); bx.fill(); bx.restore(); }
+  } else {
+    const sums=new Map();
+    for(const b of flock){ let s=sums.get(b.cid); if(!s){s={x:0,y:0,n:0,vx:0};sums.set(b.cid,s);} s.x+=b.x; s.y+=b.y; s.n++; s.vx+=b.vx; }
+    bx.textAlign="center"; bx.textBaseline="middle";
+    for(const [id,s] of sums){ const w=words.get(id); if(!w) continue;
+      bx.font = w.seed ? "italic 18px Newsreader, Georgia, serif" : "500 24px Newsreader, Georgia, serif";
+      bx.fillStyle = w.seed ? "rgba(163,156,176,.8)" : "#ece5d5"; bx.fillText(w.word, s.x/s.n, s.y/s.n); }
+  }
+}
+function loop(now){ step(now); draw(now); requestAnimationFrame(loop); }
+
+/* ===== Escribir: tocar el cielo, escribir, soltar ===== */
+let tap=null;
+birdsC.addEventListener("click",e=>{
+  if(!opened || SALA) return;
+  if(e.clientY>HORIZON){ hint("Toca más arriba, en el cielo."); return; }
+  if(e.clientY<STACK_H+10) return;
+  tap={x:e.clientX/W, y:e.clientY/HORIZON};
+  const w=$("write"); w.style.left=Math.min(W-130,Math.max(130,e.clientX))+"px"; w.style.top=Math.max(90,e.clientY)+"px"; w.classList.add("show"); $("word").value=""; $("word").focus();
+});
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") $("write").classList.remove("show"); });
+const mine=new Set(store.get("mine",[]));
+$("wform").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const word=$("word").value.replace(/\s+/g," ").trim(); if(!word||!tap) return;
+  $("write").classList.remove("show");
+  const payload = `${word} ⟨${tap.x.toFixed(3)},${tap.y.toFixed(3)}⟩`;
+  const local = {id:"local"+Date.now(), word, x:tap.x, y:tap.y, ts:Date.now(), key:payload};
+  addWord(local); mine.add(payload); store.set("mine",[...mine]);
+  try{
+    await fetch(FORM_POST,{method:"POST",mode:"no-cors",body:new URLSearchParams({[F_WHERE]:WHERE_VALUE,[F_TEXT]:payload})});
+    hint("Tu estornino se unió a la bandada.");
+  }catch(err){ hint("No se pudo enviar. Revisa tu conexión e inténtalo de nuevo."); removeWord(local.id); }
+});
+
+/* ===== Leer la hoja común (JSONP) ===== */
+let lastOk=0;
+function load(){
+  const cb="gv"+Date.now(), s=document.createElement("script");
+  window[cb]=resp=>{ delete window[cb]; s.remove(); try{
+    const cols=(resp.table.cols||[]).map(c=>(c.label||"").toLowerCase()); const iT=cols.findIndex(l=>l.includes("aporte"));
+    const incoming=[];
+    (resp.table.rows||[]).forEach((r,i)=>{ const c=r.c||[]; const raw=c[0]&&c[0].v; const m=typeof raw==="string"&&raw.match(/Date\((\d+),(\d+),(\d+),?(\d+)?,?(\d+)?,?(\d+)?/);
+      const ts=m?new Date(+m[1],+m[2],+m[3],+(m[4]||0),+(m[5]||0),+(m[6]||0)).getTime():0;
+      const t=iT>=0&&c[iT]?String(c[iT].v||"").trim():""; if(!t||(ts&&ts<cutoff)) return;
+      const mm=t.match(/^(.*?)\s*⟨([\d.]+),([\d.]+)⟩\s*$/);
+      const word=(mm?mm[1]:t).slice(0,40), x=mm?+mm[2]:0.15+((i*0.37)%0.7), y=mm?+mm[3]:0.2+((i*0.53)%0.6);
+      incoming.push({id:"r"+i+"-"+ts, word, x, y, ts, key:t});
+    });
+    // lo que ya mostramos localmente no se duplica
+    for(const c of incoming){
+      if(hidden.has(c.id)) continue;
+      const dup=[...words.values()].find(w=>w.key===c.key && String(w.id).startsWith("local"));
+      if(dup){ words.delete(dup.id); words.set(c.id,{...dup,id:c.id,ts:c.ts}); flock.forEach(b=>{ if(b.cid===dup.id) b.cid=c.id; }); continue; }
+      addWord(c);
+    }
+    lastOk=Date.now(); renderMod();
+  }catch(e){} };
+  s.onerror=()=>{ delete window[cb]; s.remove(); };
+  s.src=`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json;responseHandler:${cb}&gid=${SHEET_GID}&headers=1&_=${Date.now()}`;
+  document.head.appendChild(s);
+}
+function renderCount(){ $("n").textContent=[...words.values()].filter(w=>!w.seed).length; }
+
+/* ===== Ver estorninos o palabras · guardar la ruta ===== */
+$("viewBtn").addEventListener("click",()=>{ showWords=!showWords; $("viewBtn").setAttribute("aria-pressed",String(showWords)); $("viewBtn").textContent= showWords?"Ver estorninos":"Ver palabras"; });
+$("saveBtn").addEventListener("click",()=>{
+  const out=document.createElement("canvas"); out.width=W*DPR; out.height=H*DPR; const o=out.getContext("2d");
+  o.drawImage(sky,0,0); o.drawImage(trail,0,0); o.drawImage(birdsC,0,0); o.setTransform(DPR,0,0,DPR,0,0);
+  const ws=route().map(w=>w.word);
+  o.fillStyle="rgba(13,16,32,.78)"; o.fillRect(0,0,W,Math.min(H*0.32,150+ws.length*0));
+  o.fillStyle="#ece5d5"; o.font="700 44px 'Saira Condensed', Arial Narrow, sans-serif"; o.fillText("Estorninos",28,62);
+  o.font="italic 18px Newsreader, Georgia, serif"; o.fillStyle="#a39cb0";
+  o.fillText("Una ruta trazada sin dirigente · a partir de Saidiya Hartman · Ensamblajes especulativos, "+new Date().toLocaleDateString("es-CL"),28,92);
+  o.font="20px Newsreader, Georgia, serif"; o.fillStyle="#f0b84f";
+  let line="", y=126; for(const w of ws){ const t=(line?line+" · ":"")+w; if(o.measureText(t).width>W-56){ o.fillText(line,28,y); y+=26; line=w; } else line=t; } if(line) o.fillText(line,28,y);
+  const a=document.createElement("a"); a.download="estorninos-ruta.png"; a.href=out.toDataURL("image/png"); document.body.appendChild(a); a.click(); a.remove();
+});
+
+/* ===== Sala: QR, moderación y reinicio ===== */
+const PUBLIC = location.href.split("?")[0].split("#")[0];
+if(SALA){ $("url").textContent=PUBLIC.replace(/^https?:\/\//,""); try{ new QRCode($("qr"),{text:PUBLIC,width:220,height:220,colorDark:"#1f1a17",colorLight:"#ece5d5",correctLevel:QRCode.CorrectLevel.M}); }catch(e){} }
+function renderMod(){ if(!$("mod").classList.contains("open")) return;
+  const all=[...words.values()].filter(w=>!w.seed);
+  $("modlist").innerHTML = all.length? all.map(w=>`<button class="row ${hidden.has(w.id)?"off":""}" data-id="${w.id}" type="button">${w.word.replace(/[&<>]/g,"")}</button>`).join("") : "<p>Todavía no hay palabras.</p>"; }
+$("modlist").addEventListener("click",e=>{ const b=e.target.closest(".row"); if(!b) return; const id=b.dataset.id; hidden.add(id); store.set("hidden",[...hidden]); removeWord(id); renderMod(); });
+let armed=0;
+document.addEventListener("keydown",e=>{
+  if(document.activeElement===$("word")) return;
+  const k=e.key.toLowerCase();
+  if(k==="w") $("viewBtn").click();
+  if(!SALA) return;
+  if(k==="m"){ $("mod").classList.toggle("open"); renderMod(); }
+  if(k==="r"){ if(Date.now()-armed<2500){ cutoff=Date.now(); store.set("cutoff",cutoff); for(const id of [...words.keys()]) if(!String(id).startsWith("seed")) removeWord(id); tx.clearRect(0,0,W,H); hint("Cielo limpio. La hoja no se borró."); armed=0; } else { armed=Date.now(); hint("Presiona R otra vez para limpiar el cielo."); } }
+});
+
+addEventListener("resize",()=>{ resize(); });
+resize(); requestAnimationFrame(animBlind); requestAnimationFrame(loop);
+load(); setInterval(load,POLL_MS);
+</script>
+</body>
+</html>
