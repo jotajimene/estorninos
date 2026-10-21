@@ -259,7 +259,7 @@ function rulesFor(word){
 const famInk=["#2a1606","#3a0f1c","#0d1a3a","#08302a","#2c0f3a"];
 function addWord(o){
   if(byKey.has(o.key)) return; const r=rulesFor(o.word);
-  const wd={...o,...r,start:B.n,cnt:0}; words.push(wd); byKey.set(o.key,wd);
+  const wd={...o,...r,start:B.n,cnt:0, ph:[...Array(6)].map(()=>Math.random()*6.283), sp:[.7+Math.random()*.8,.5+Math.random()*.9,.6+Math.random()*.8], jx:0,jy:0,jz:600,jt:0, cx:0,cy:0,cz:600, rx:0,ry:0}; words.push(wd); byKey.set(o.key,wd);
   const lettersOf=[...o.word.replace(/\s/g,"")]; if(!lettersOf.length) lettersOf.push("·");
   const cx=(o.x-.5)*2*BX, cy=BYT+(BYB-BYT)*Math.min(1,o.y/.78), cz=600;
   for(let i=0;i<r.count && B.n<MAXB;i++){ const j=B.n++;
@@ -278,18 +278,29 @@ const CELL=30, grid=new Map();
 function key3(x,y,z){return ((x/CELL)|0)*73856093 ^ ((y/CELL)|0)*19349663 ^ ((z/CELL)|0)*83492791}
 function target(now){
   if(focusIdx>=0 && now<focusUntil) return route[focusIdx];
-  if(route.length){ if(now-routeT>8000){routeT=now; routeI=(routeI+1)%route.length;} return route[routeI]; }
-  return {x:Math.cos(now/9000)*BX*.6, y:(BYT+BYB)/2+Math.sin(now/7000)*(BYB-BYT)*.3, z:600};
+  if(route.length){ if(now-routeT>5000){routeT=now; routeI=Math.floor(Math.random()*route.length);} return route[routeI]; }
+  return {x:Math.cos(now/7000)*BX*.85+Math.sin(now/2300)*BX*.15, y:(BYT+BYB)/2+Math.sin(now/5300)*(BYB-BYT)*.42, z:600};
 }
 const nbI=new Int32Array(64), nbD=new Float32Array(64);
 function stepFlock(now){
   const n=B.n; if(!n) return; grid.clear();
   for(let i=0;i<n;i++){const k=key3(B.x[i],B.y[i],B.z[i]); let g=grid.get(k); if(!g){g=[];grid.set(k,g);} g.push(i);}
   const T=target(now);
-  let gx_=0,gy_=0,gz_=0; const fx=new Float32Array(5),fy=new Float32Array(5),fz=new Float32Array(5),fn=new Float32Array(5);
-  for(let i=0;i<n;i++){ gx_+=B.x[i]; gy_+=B.y[i]; gz_+=B.z[i]; const f=words[B.w[i]].fam; fx[f]+=B.x[i]; fy[f]+=B.y[i]; fz[f]+=B.z[i]; fn[f]++; }
-  gx_/=n; gy_/=n; gz_/=n; for(let f=0;f<5;f++) if(fn[f]){fx[f]/=fn[f];fy[f]/=fn[f];fz[f]/=fn[f];}
-  CEN.x=gx_; CEN.y=gy_; CEN.z=gz_;
+  let gx_=0,gy_=0,gz_=0;
+  for(const wd of words){ wd.cx=0;wd.cy=0;wd.cz=0; }
+  for(let i=0;i<n;i++){ gx_+=B.x[i]; gy_+=B.y[i]; gz_+=B.z[i]; const wd=words[B.w[i]]; wd.cx+=B.x[i]; wd.cy+=B.y[i]; wd.cz+=B.z[i]; }
+  gx_/=n; gy_/=n; gz_/=n; CEN.x=gx_; CEN.y=gy_; CEN.z=gz_;
+  const t=now/1000, midY=(BYT+BYB)/2, halfY=(BYB-BYT)/2;
+  for(const wd of words){ const m=wd.cnt||1; wd.cx/=m; wd.cy/=m; wd.cz/=m;
+    // cada palabra tiene su propio rumbo errático: ondas lentas y, cada tanto, un salto a otro punto del cielo
+    if(now>wd.jt){ wd.jt=now+3500+Math.random()*6000; wd.jx=(Math.random()*2-1)*BX*.95; wd.jy=midY-halfY*.1+(Math.random()*2-1)*halfY*.65; wd.jz=470+Math.random()*320; }
+    wd.tx=wd.jx*.6 + BX*.45*Math.sin(t*.13*wd.sp[0]+wd.ph[0]) + BX*.2*Math.sin(t*.41*wd.sp[1]+wd.ph[1]);
+    wd.ty=midY-halfY*.1 + (wd.jy-midY)*.6 + halfY*.3*Math.sin(t*.17*wd.sp[1]+wd.ph[2]) + halfY*.12*Math.sin(t*.53*wd.sp[2]+wd.ph[3]);
+    wd.tz=wd.jz + 90*Math.sin(t*.2*wd.sp[2]+wd.ph[4]);
+    wd.rx=0; wd.ry=0; }
+  // las palabras se dan espacio unas a otras, así se distinguen
+  for(let a=0;a<words.length;a++) for(let b=a+1;b<words.length;b++){ const A=words[a], Bw=words[b]; const dx=A.cx-Bw.cx, dy=A.cy-Bw.cy, d=Math.hypot(dx,dy)||1;
+    if(d<210){ const f=(1-d/210)*(1-d/210)*2; A.rx+=dx/d*f; A.ry+=dy/d*f; Bw.rx-=dx/d*f; Bw.ry-=dy/d*f; } }
   if(!hawk.on && Math.random()<.0035){hawk.on=true;hawk.t0=now;hawk.a=Math.random()*6.283;}
   if(hawk.on){const p=(now-hawk.t0)/5200; if(p>1) hawk.on=false; else {hawk.x=Math.cos(hawk.a)*(-600+1200*p); hawk.y=Math.sin(hawk.a*1.3)*160; hawk.z=520+Math.sin(p*6)*120;}}
   for(let i=0;i<n;i++){
@@ -302,22 +313,26 @@ function stepFlock(now){
     let ax=0,ay=0,az=0,cx=0,cy=0,cz=0,vx=0,vy=0,vz=0,cnt=0, fam=0;
     for(let s=0;s<Math.min(k,m);s++){ let best=s; for(let t=s+1;t<m;t++) if(nbD[t]<nbD[best]) best=t;
       const ti=nbI[s],td=nbD[s]; nbI[s]=nbI[best]; nbD[s]=nbD[best]; nbI[best]=ti; nbD[best]=td;
-      const j=nbI[s], d2=nbD[s], same=words[B.w[j]].fam===wd.fam?1.6:1;
+      const j=nbI[s], d2=nbD[s], o=words[B.w[j]], same=o===wd?2.2:(o.fam===wd.fam?.8:.35);
       cx+=B.x[j]*same; cy+=B.y[j]*same; cz+=B.z[j]*same; vx+=B.vx[j]*same; vy+=B.vy[j]*same; vz+=B.vz[j]*same; cnt+=same; fam+=same>1?1:0;
       if(d2<(11*wd.sep)*(11*wd.sep)){ const d=Math.sqrt(d2)||1; ax-=(B.x[j]-xi)/d*.3*wd.sep; ay-=(B.y[j]-yi)/d*.3*wd.sep; az-=(B.z[j]-zi)/d*.3*wd.sep; } }
     if(cnt){ ax+=(cx/cnt-xi)*.003*wd.coh; ay+=(cy/cnt-yi)*.003*wd.coh; az+=(cz/cnt-zi)*.003*wd.coh; ax+=(vx/cnt-B.vx[i])*.11; ay+=(vy/cnt-B.vy[i])*.11; az+=(vz/cnt-B.vz[i])*.11; }
-    // la bandada entera se mantiene como un solo cuerpo; las familias se buscan dentro de él
-    ax+=(gx_-xi)*.00035*wd.coh; ay+=(gy_-yi)*.0007*wd.coh; az+=(gz_-zi)*.0004;
-    const ff=wd.fam; ax+=(fx[ff]-xi)*.0006; ay+=(fy[ff]-yi)*.0005; az+=(fz[ff]-zi)*.0004;
-    // rumbo común hacia el punto de la ruta, más fuerte en las palabras de la misma familia
-    const tdx=T.x-xi, tdy=T.y-yi, tdz=T.z-zi, td=Math.hypot(tdx,tdy,tdz)||1; ax+=tdx/td*.028; ay+=tdy/td*.028; az+=tdz/td*.02;
+    // cada palabra se mantiene junta como su propia bandada
+    ax+=(wd.cx-xi)*.0017*wd.coh; ay+=(wd.cy-yi)*.0019*wd.coh; az+=(wd.cz-zi)*.0011;
+    // y se aparta de las otras palabras que tiene demasiado cerca
+    ax+=wd.rx*.07; ay+=wd.ry*.07;
+    // su rumbo propio domina; la ruta común tira apenas, salvo para la palabra recién soltada
+    const fresh=(focusIdx>=0 && now<focusUntil && wd===words[words.length-1]);
+    const gw=fresh?.03:0, ow=fresh?.008:.032;
+    const tdx=T.x-xi, tdy=T.y-yi, tdz=T.z-zi, td=Math.hypot(tdx,tdy,tdz)||1; ax+=tdx/td*gw; ay+=tdy/td*gw; az+=tdz/td*gw*.7;
+    const odx=wd.tx-xi, ody=wd.ty-yi, odz=wd.tz-zi, od=Math.hypot(odx,ody,odz)||1; ax+=odx/od*ow; ay+=ody/od*ow; az+=odz/od*ow*.7;
     // las familias de vocales tienen una leve preferencia de altura: así se separan en capas
     if(hawk.on){ const hx=xi-hawk.x, hy=yi-hawk.y, hz=zi-hawk.z, hd=Math.hypot(hx,hy,hz)||1; if(hd<150){ const f=(1-hd/150)*.9; ax+=hx/hd*f; ay+=hy/hd*f; az+=hz/hd*f; } }
     if(wd.turb>.2){ const tt=now/700+i; ax+=Math.sin(tt)*.05*wd.turb; ay+=Math.cos(tt*1.3)*.05*wd.turb; }
     // límites suaves del cielo visible
-    if(yi>BYB) ay-=.09; if(yi<BYT) ay+=.09; if(xi<-BX) ax+=.09; if(xi>BX) ax-=.09; if(zi<440) az+=.08; if(zi>820) az-=.08;
+    if(yi>BYB) ay-=.16; if(yi<BYT) ay+=.14; if(xi<-BX) ax+=.13; if(xi>BX) ax-=.13; if(zi<440) az+=.08; if(zi>820) az-=.08;
     let nvx=B.vx[i]+ax, nvy=B.vy[i]+ay, nvz=B.vz[i]+az; const sp=Math.hypot(nvx,nvy,nvz);
-    const mx=3.6, mn=1.8; if(sp>mx){nvx*=mx/sp;nvy*=mx/sp;nvz*=mx/sp} else if(sp<mn){nvx*=mn/sp;nvy*=mn/sp;nvz*=mn/sp}
+    const mx=4.2, mn=1.9; if(sp>mx){nvx*=mx/sp;nvy*=mx/sp;nvz*=mx/sp} else if(sp<mn){nvx*=mn/sp;nvy*=mn/sp;nvz*=mn/sp}
     B.vx[i]=nvx; B.vy[i]=nvy; B.vz[i]=nvz;
   }
   if(!reduce) for(let i=0;i<n;i++){ B.x[i]+=B.vx[i]; B.y[i]+=B.vy[i]; B.z[i]+=B.vz[i]; }
@@ -366,8 +381,10 @@ function drawSkyAndFlock(now, inGap){
     for(let i=0;i<B.n;i++){ const [px,py,s]=proj(B.x[i],B.y[i],B.z[i]); if(px<WIN.x||px>WIN.x+WIN.w||py<WIN.y||py>WIN.y+WIN.h) continue;
       const wd=words[B.w[i]]; const fs=Math.max(7,Math.round(7.5*s)); ctx.font=`500 ${fs}px Newsreader, Georgia, serif`;
       ctx.fillStyle=wd.seed?"rgba(28,20,34,.55)":famInk[wd.fam]; ctx.fillText(B.ch[i],px,py); }
-    for(const wd of words){ if(wd.seed) continue; let x=0,y=0,z=0; for(let j=wd.start;j<wd.start+wd.cnt;j++){x+=B.x[j];y+=B.y[j];z+=B.z[j];} const m=wd.cnt||1; const [px,py,s]=proj(x/m,y/m,z/m);
-      ctx.font="italic 500 19px Newsreader, Georgia, serif"; ctx.fillStyle="rgba(255,236,206,.92)"; ctx.fillText(wd.word,px,py-24); }
+    ctx.font="italic 500 19px Newsreader, Georgia, serif"; const placed=[];
+    for(const wd of words){ if(wd.seed) continue; let [px,py]=proj(wd.cx,wd.cy,wd.cz); py-=24; const w=ctx.measureText(wd.word).width+10; if(px<WIN.x-10||px>WIN.x+WIN.w+10||py<WIN.y||py>WIN.y+WIN.h-20) continue; px=Math.max(WIN.x+w/2+4,Math.min(WIN.x+WIN.w-w/2-4,px));
+      for(let tries=0;tries<6;tries++){ const hit=placed.find(r=>Math.abs(r.x-px)<(r.w+w)/2 && Math.abs(r.y-py)<22); if(!hit) break; py=hit.y+(py>=hit.y?24:-24); }
+      placed.push({x:px,y:py,w}); ctx.fillStyle="rgba(20,12,16,.45)"; ctx.fillText(wd.word,px+1,py+1); ctx.fillStyle="rgba(255,236,206,.95)"; ctx.fillText(wd.word,px,py); }
   }
   ctx.restore();
 }
