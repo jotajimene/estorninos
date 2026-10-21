@@ -22,8 +22,10 @@ button,input{font:inherit;color:inherit}
 #gate h1{font-family:var(--title);font-weight:700;font-size:clamp(3.4rem,11vw,10rem);line-height:.86;margin:0 0 5vh;color:var(--bone)}
 #gate blockquote{margin:0;max-width:42rem;font-style:italic;font-size:clamp(1.25rem,2.6vw,2.1rem);line-height:1.3;color:#d9cfbf}
 #gate cite{display:block;margin-top:1rem;font-style:normal;font-size:clamp(.95rem,1.4vw,1.1rem);color:var(--dim)}
+#gate .credits{position:absolute;bottom:18px;left:max(24px,9vw);font-size:.8rem;color:#6e6577;margin:0}
 #enter{margin-top:6vh;align-self:flex-start;background:var(--bone);color:var(--ink);border:0;border-radius:3px;padding:1rem 1.6rem;font-size:1.25rem;cursor:pointer}
 #enter:hover{background:#fff4e2}
+#enter:disabled{opacity:.55;cursor:wait}
 
 /* guía */
 #guide{position:fixed;left:50%;bottom:calc(5vh + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:30;width:min(40rem,92vw);background:rgba(16,13,20,.86);backdrop-filter:blur(6px);border-radius:4px;padding:1.3rem 1.5rem 1.1rem;opacity:0;pointer-events:none;transition:opacity .8s}
@@ -92,7 +94,8 @@ body.sala #host{display:flex}
   <h1>Estorninos</h1>
   <blockquote>«El camino errante que sigue el enjambre sin dirigente, en busca de un lugar mejor.»
     <cite>Saidiya Hartman, «Rebeldía y descarrío: una entrada breve sobre lo posible»</cite></blockquote>
-  <button id="enter" type="button">Entrar al cuarto</button>
+  <p class="credits">Fotografías de Unsplash.</p>
+  <button id="enter" type="button" disabled>Cargando el cuarto…</button>
 </section>
 
 <div class="ui" id="count"><b id="nw">0</b> palabras · <b id="nb">0</b> estorninos</div>
@@ -158,101 +161,86 @@ const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
 function hint(m,ms=2800){const h=$("hint");h.textContent=m;h.classList.add("show");clearTimeout(hint.t);hint.t=setTimeout(()=>h.classList.remove("show"),ms)}
 async function sha(s){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("")}
 
-/* ======== Lienzo y escena ======== */
+/* ======== Lienzo y escena: fotos reales ======== */
 const cv=$("c"), ctx=cv.getContext("2d");
 let W=0,H=0,DPR=1, WIN={x:0,y:0,w:0,h:0};
-const skyC=document.createElement("canvas"), sx=skyC.getContext("2d");      // cielo y ciudad, pintados una vez
-const trailC=document.createElement("canvas"), tx=trailC.getContext("2d");  // estela de la ruta
-const roomC=document.createElement("canvas"), rx=roomC.getContext("2d");    // muro y marco
 function rnd(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+// el cuarto: una persiana cerrada fotografiada de frente; medidas en píxeles de la foto
+const ROOM=new Image(), SKY=new Image(); let ready=0;
+const R={w:2000,h:1408, bx0:468, bx1:1409, head:178, top:258.5, rail:1320, bottom:1352,
+  bounds:[336,416,493,569,646,723,801,878,954,1032,1109,1188,1265,1343,1421,1499,1577,1654,1716].map(v=>v*2000/2600)};
+let S=1, OX=0, OY=0; // escala y origen de la foto en pantalla
+const sxp=x=>OX+x*S, syp=y=>OY+y*S;
 function resize(){
   DPR=Math.min(2,devicePixelRatio||1); W=innerWidth; H=innerHeight;
   cv.width=W*DPR; cv.height=H*DPR; ctx.setTransform(DPR,0,0,DPR,0,0);
-  // la ventana ocupa el centro, como si estuviéramos sentados frente a ella
-  const ww=Math.min(W*0.78, H*1.15), wh=Math.min(H*0.84, ww*1.05);
-  WIN={x:(W-ww)/2, y:Math.max(H*0.06,(H-wh)/2-H*0.02), w:ww, h:wh};
-  for(const c of [skyC,trailC]){c.width=Math.round(WIN.w*1.12*DPR);c.height=Math.round(WIN.h*1.12*DPR);}
-  sx.setTransform(DPR,0,0,DPR,0,0); tx.setTransform(DPR,0,0,DPR,0,0);
-  roomC.width=W*DPR; roomC.height=H*DPR; rx.setTransform(DPR,0,0,DPR,0,0);
-  const s6=WIN.h*1.05/600; BX=(WIN.w/2)/s6*.78; BYT=-(WIN.h*.42)/s6*.8; BYB=(WIN.h*.3)/s6;
-  paintSky(); paintRoom();
+  // la persiana completa entra en pantalla; en teléfono nos acercamos a ella
+  const bw=R.bx1-R.bx0, bh=R.bottom-R.head;
+  S=Math.min(W*.96/bw, H*.9/bh, Math.max(W/R.w,H/R.h));
+  const cx=(R.bx0+R.bx1)/2, cy=(R.head+R.bottom)/2;
+  OX=W/2-cx*S; OY=H/2-cy*S+H*.01;
+  OX=Math.min(Math.max(OX, W-R.w*S), 0>W-R.w*S?0:(W-R.w*S)/2); if(R.w*S<W) OX=(W-R.w*S)/2+ (W/2-(OX+cx*S))*0;
+  OX=W/2-cx*S; // centrado en la ventana siempre
+  WIN={x:sxp(R.bx0), y:syp(R.top), w:(R.bx1-R.bx0)*S, h:(R.rail-R.top)*S};
+  backOK=false;
+  const s6=WIN.h*1.05/600; BX=(WIN.w/2)/s6*.8; BYT=-(WIN.h*.42)/s6*.85; BYB=(WIN.h*.36)/s6;
 }
 let BX=300,BYT=-200,BYB=140;
-const SKY_W=()=>WIN.w*1.12, SKY_H=()=>WIN.h*1.12;
-function paintSky(){
-  const w=SKY_W(), h=SKY_H(), r=rnd(1979);
-  const g=sx.createLinearGradient(0,0,0,h);
-  g.addColorStop(0,"#2a2f5c"); g.addColorStop(.34,"#5d4f86"); g.addColorStop(.58,"#b46f7e"); g.addColorStop(.78,"#e8935c"); g.addColorStop(.9,"#f6b870");
-  sx.fillStyle=g; sx.fillRect(0,0,w,h);
-  // nubes finas, horizontales, iluminadas desde abajo
-  for(let i=0;i<26;i++){const y=h*(.25+r()*.45), x=r()*w, cw=w*(.15+r()*.4), ch=2+r()*7;
-    const cg=sx.createLinearGradient(x,0,x+cw,0); cg.addColorStop(0,"rgba(255,190,150,0)"); cg.addColorStop(.5,`rgba(255,${170+r()*40|0},${130+r()*30|0},${.08+r()*.12})`); cg.addColorStop(1,"rgba(255,190,150,0)");
-    sx.fillStyle=cg; sx.beginPath(); sx.ellipse(x+cw/2,y,cw/2,ch,0,0,6.283); sx.fill();}
-  // cordillera lejana en bruma
-  const base=h*.86; sx.fillStyle="rgba(92,66,98,.55)"; sx.beginPath(); sx.moveTo(0,h);
-  let v=0, vv=0; for(let x=0;x<=w;x+=6){vv+=(r()-.5)*.6; vv*=.94; v+=vv; sx.lineTo(x, base-h*.035-Math.sin(x/w*2.3+.9)*h*.02-v*1.1);} sx.lineTo(w,h); sx.fill();
-  // techos: árboles irregulares, edificios bajos, estanques de agua, antenas
-  sx.fillStyle="#120e16"; sx.beginPath(); sx.moveTo(0,h);
-  for(let x=0;x<=w;x+=3){ const n=Math.sin(x*.07)*3+Math.sin(x*.21)*2+(r()-.5)*5; sx.lineTo(x, base+ n - (Math.sin(x/w*7)+1)*h*.012);} sx.lineTo(w,h); sx.fill();
-  let x=0; while(x<w){ const bw=40+r()*110, bh=h*(.02+r()*.05); if(r()<.55){ sx.fillRect(x,base-bh,bw,bh+40);
-      if(r()<.45){const tx_=x+bw*(.2+r()*.5), ty=base-bh; sx.fillRect(tx_,ty-22,18,15); sx.beginPath(); sx.moveTo(tx_-3,ty-22); sx.lineTo(tx_+9,ty-31); sx.lineTo(tx_+21,ty-22); sx.fill(); sx.fillRect(tx_+2,ty-7,2,7); sx.fillRect(tx_+14,ty-7,2,7);}
-      if(r()<.25){sx.fillRect(x+bw*r(),base-bh-28,1.5,28);} } x+=bw; }
-  for(let i=0;i<40;i++){ if(r()<.6){ sx.fillStyle=`rgba(255,${190+r()*40|0},120,${.5+r()*.4})`; sx.fillRect(r()*w, base-h*(.005+r()*.04), 2, 2.5);} }
-}
-function paintRoom(){
-  rx.clearRect(0,0,W,H);
-  // muro en penumbra con la luz de la ventana derramándose
-  rx.fillStyle="#110d0d"; rx.fillRect(0,0,W,H);
-  const cx=WIN.x+WIN.w/2, cy=WIN.y+WIN.h/2;
-  let g=rx.createRadialGradient(cx,cy,WIN.w*.3,cx,cy,Math.max(W,H)*.75);
-  g.addColorStop(0,"rgba(214,128,86,.30)"); g.addColorStop(.45,"rgba(120,64,58,.12)"); g.addColorStop(1,"rgba(0,0,0,0)");
-  rx.fillStyle=g; rx.fillRect(0,0,W,H);
-  // marco de la ventana y alféizar
-  const f=Math.max(10,WIN.w*.022);
-  rx.fillStyle="#2a2220"; rx.fillRect(WIN.x-f,WIN.y-f,WIN.w+2*f,f); rx.fillRect(WIN.x-f,WIN.y,f,WIN.h); rx.fillRect(WIN.x+WIN.w,WIN.y,f,WIN.h);
-  rx.fillStyle="#3a2e29"; rx.fillRect(WIN.x-f*2.2,WIN.y+WIN.h,WIN.w+f*4.4,f*1.4);
-  rx.fillStyle="rgba(240,180,120,.22)"; rx.fillRect(WIN.x-f*2.2,WIN.y+WIN.h,WIN.w+f*4.4,2);
-  rx.fillStyle="#1a1414"; rx.fillRect(WIN.x-f*2.2,WIN.y+WIN.h+f*1.4,WIN.w+f*4.4,f*.6);
-  rx.clearRect(WIN.x,WIN.y,WIN.w,WIN.h);
-}
 
-/* ======== La persiana ======== */
-const blind={tilt:.1, tiltT:.1, raise:0, raiseT:0, wobble:0};
-const SL=()=>Math.max(14, Math.round(WIN.h/34)); // alto de cada lama
-function drawBlind(t){
-  const n=Math.ceil(WIN.h/SL())+1, h=SL(), x0=WIN.x, w=WIN.w;
-  const stackTop=WIN.y+2, stackGap=Math.max(2.2,h*.17);
-  const raised=blind.raise;
-  for(let i=0;i<n;i++){
-    const y0=WIN.y+i*h;
-    const yS=stackTop+i*stackGap;
-    let y=y0+(yS-y0)*raised;
-    // la lama gira: se ve más delgada y deja pasar el cielo
-    const open = raised>.02 ? Math.max(blind.tilt, raised) : blind.tilt;
-    const sway=Math.sin(t/900+i*.7)*blind.wobble*1.5;
-    const vis=h*(1-.82*open);
-    if(y>WIN.y+WIN.h) continue;
-    const sh=Math.min(vis, WIN.y+WIN.h-y);
-    const g=ctx.createLinearGradient(0,y,0,y+sh);
-    // luz que atraviesa: canto superior cálido, cuerpo gris frío, sombra al borde inferior
-    g.addColorStop(0,"#f6d3a0"); g.addColorStop(.08,"#cfc4b8"); g.addColorStop(.5,"#8f8a92"); g.addColorStop(.92,"#55505a"); g.addColorStop(1,"#3b363f");
-    ctx.fillStyle=g;
-    ctx.beginPath(); ctx.moveTo(x0,y+sway); ctx.quadraticCurveTo(x0+w/2,y+1.6+sway,x0+w,y+sway); ctx.lineTo(x0+w,y+sh+sway); ctx.quadraticCurveTo(x0+w/2,y+sh+1.6+sway,x0,y+sh+sway); ctx.closePath(); ctx.fill();
+/* ======== La persiana: se baja una lama con el dedo; solo la sala la levanta entera ======== */
+const blind={raise:0, raiseT:0, raiseV:0};
+const pull={on:false, x:0, i:8, d:0, dT:0, v:0};
+const PITCH=()=> (R.bounds[1]-R.bounds[0])*S;
+const backC=document.createElement("canvas"), bkx=backC.getContext("2d"); let backOK=false;
+function makeBackdrop(){ if(!ROOM.complete||!ROOM.naturalWidth) return; backC.width=Math.ceil(W/4); backC.height=Math.ceil(H/4);
+  const cs=Math.max(backC.width/R.w, backC.height/R.h)*1.15; bkx.filter="blur(6px) brightness(.55)";
+  bkx.drawImage(ROOM,(backC.width-R.w*cs)/2,(backC.height-R.h*cs)/2,R.w*cs,R.h*cs); bkx.filter="none"; backOK=true; }
+function drawBackdrop(){ if(!backOK) makeBackdrop(); if(backOK) ctx.drawImage(backC,0,0,W,H); }
+function drawRoom(){
+  // el muro y todo lo que no es la persiana
+  ctx.save(); ctx.beginPath(); ctx.rect(0,0,W,H); ctx.rect(sxp(R.bx0),syp(R.top),(R.bx1-R.bx0)*S,(R.bottom-R.top)*S); ctx.clip("evenodd");
+  ctx.drawImage(ROOM,OX,OY,R.w*S,R.h*S); ctx.restore();
+  // los bordes de la foto se funden con la penumbra
+  const e=24; const L=OX, T=OY, Rr=OX+R.w*S, Bt=OY+R.h*S;
+  const fade=(x0,y0,x1,y1,ax,ay,bx,by)=>{ const g=ctx.createLinearGradient(ax,ay,bx,by); g.addColorStop(0,"rgba(14,10,12,1)"); g.addColorStop(1,"rgba(14,10,12,0)"); ctx.fillStyle=g; ctx.fillRect(x0,y0,x1-x0,y1-y0); };
+  if(T>0) fade(0,T,W,T+e,0,T,0,T+e); if(Bt<H) fade(0,Bt-e,W,Bt,0,Bt,0,Bt-e);
+  if(L>0) fade(L,0,L+e,H,L,0,L+e,0); if(Rr<W) fade(Rr-e,0,Rr,H,Rr,0,Rr-e,0);
+}
+function drawSlats(){
+  const x0=R.bx0, x1=R.bx1, top=R.top, bot=R.bottom, Hs=bot-top;
+  if(blind.raise>.002){
+    // levantada: las lamas se apilan contra el cabezal
+    const h=Hs*(1-blind.raise*.86);
+    ctx.drawImage(ROOM,x0,top,x1-x0,Hs, sxp(x0),syp(top),(x1-x0)*S,h*S);
+    ctx.fillStyle="rgba(0,0,0,.18)"; ctx.fillRect(sxp(x0),syp(top)+h*S,(x1-x0)*S,3);
+    return;
   }
-  // barra inferior
-  const by=WIN.y+(WIN.h-6)*(1-raised)+ (stackTop+n*stackGap)*raised*.0;
-  const bottom= raised>0 ? (WIN.y+WIN.h)*(1-raised)+(stackTop+n*stackGap)*raised : WIN.y+WIN.h-6;
-  ctx.fillStyle="#6d6670"; ctx.fillRect(x0,bottom-4,w,7);
-  // cintas de escalera y cordones
-  ctx.fillStyle="rgba(40,36,44,.55)";
-  for(const p of [.1,.5,.9]){ const cx=x0+w*p; ctx.fillRect(cx-1,WIN.y,2,bottom-WIN.y); }
-  ctx.strokeStyle="rgba(230,220,205,.55)"; ctx.lineWidth=1.2;
-  const cordX=x0+w*.93; ctx.beginPath(); ctx.moveTo(cordX,WIN.y); ctx.lineTo(cordX,bottom+WIN.h*.18*(1-raised)+20); ctx.stroke();
-  ctx.fillStyle="#d8ccb8"; ctx.beginPath(); ctx.ellipse(cordX,bottom+WIN.h*.18*(1-raised)+26,4,8,0,0,6.283); ctx.fill();
-  // varilla para girar las lamas
-  const wandX=x0+w*.06; ctx.strokeStyle="rgba(235,226,210,.7)"; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(wandX,WIN.y+4); ctx.lineTo(wandX,WIN.y+WIN.h*.42); ctx.stroke();
+  const d=pull.d; // en píxeles de pantalla
+  if(d<.4){ ctx.drawImage(ROOM,x0,top,x1-x0,Hs, sxp(x0),syp(top),(x1-x0)*S,Hs*S); return; }
+  const sig=(x1-x0)*S*.15, px=pull.x, yb=R.bounds[pull.i], pit=R.bounds[pull.i+1]-yb;
+  const cw=2/S; // columnas de 2 px de pantalla
+  const a0=Math.max(x0, (px-sig*2.6-OX)/S), a1=Math.min(x1,(px+sig*2.6-OX)/S);
+  // la persiana entera, quieta; luego se abre el hueco y se dibuja la lama tomada
+  ctx.drawImage(ROOM,x0,top,x1-x0,Hs, sxp(x0),syp(top),(x1-x0)*S,Hs*S);
+  const topPts=[], shPts=[];
+  // 1) el hueco: entre el borde de la lama de arriba y la lama que baja se ve el cielo
+  ctx.save(); ctx.beginPath(); ctx.rect(sxp(a0),syp(yb)-.5,(a1-a0)*S,pit*S+1); ctx.clip();
+  drawSkyAndFlock(performance.now(), true);
+  ctx.restore();
+  // 2) la lama tomada, doblada en V bajo el dedo, encima de la siguiente
+  for(let x=a0;x<a1;x+=cw){
+    const w=Math.min(cw,a1-x), cx=sxp(x+w/2), k=Math.exp(-(((cx-px)/sig)**2)), dd=d*k;
+    const X=sxp(x), Y=syp(yb)+dd, tilt=1-.3*k; // al inclinarse se ve más angosta
+    ctx.drawImage(ROOM,x,yb,w,pit, X,Y,w*S+.5,pit*S*tilt);
+    topPts.push(X,Y); shPts.push(X,Y+pit*S*tilt*(.18+.5*k));
+  }
+  // sombra del canto inclinado y luz que entra por el borde del hueco
+  ctx.beginPath(); ctx.moveTo(topPts[0],topPts[1]); for(let i=2;i<topPts.length;i+=2) ctx.lineTo(topPts[i],topPts[i+1]);
+  for(let i=shPts.length-2;i>=0;i-=2) ctx.lineTo(shPts[i],shPts[i+1]); ctx.closePath();
+  const g=ctx.createLinearGradient(0,syp(yb),0,syp(yb)+d+pit*S*.6); g.addColorStop(0,"rgba(60,30,20,.55)"); g.addColorStop(1,"rgba(60,30,20,0)"); ctx.fillStyle=g; ctx.fill();
+  // el canto iluminado solo donde la lama ya bajó
+  ctx.lineWidth=1; for(let i=2;i<topPts.length;i+=2){ const dy=topPts[i+1]-syp(yb); if(dy<1.5) continue; ctx.strokeStyle=`rgba(255,226,180,${Math.min(.55,dy/d*.55)})`; ctx.beginPath(); ctx.moveTo(topPts[i-2],topPts[i-1]); ctx.lineTo(topPts[i],topPts[i+1]); ctx.stroke(); }
 }
-
 /* ======== La bandada: estorninos en 3D con la regla de los vecinos ======== */
 const MAXB=4200;
 const B={x:new Float32Array(MAXB),y:new Float32Array(MAXB),z:new Float32Array(MAXB),vx:new Float32Array(MAXB),vy:new Float32Array(MAXB),vz:new Float32Array(MAXB),w:new Int16Array(MAXB),ph:new Float32Array(MAXB),ch:new Array(MAXB),n:0};
@@ -337,12 +325,16 @@ function stepFlock(now){
 let par={x:0,y:0,tx:0,ty:0};
 function proj(x,y,z){ const f=WIN.h*1.05; const s=f/z; return [WIN.x+WIN.w/2 + x*s + par.x*(600/z), WIN.y+WIN.h*.42 + y*s + par.y*(600/z), s]; }
 let showWords=false, showRoute=true;
-function drawSkyAndFlock(now){
-  ctx.save(); ctx.beginPath(); ctx.rect(WIN.x,WIN.y,WIN.w,WIN.h); ctx.clip();
-  const ox=WIN.x-WIN.w*.06+par.x*.25, oy=WIN.y-WIN.h*.06+par.y*.25;
-  ctx.drawImage(skyC,ox,oy,SKY_W(),SKY_H());
+function drawSkyAndFlock(now, inGap){
+  ctx.save(); if(!inGap){ ctx.beginPath(); ctx.rect(WIN.x,WIN.y,WIN.w,WIN.h); ctx.clip(); }
+  // el cielo real: la cordillera y la ciudad quedan al fondo de la ventana
+  const sw=Math.max(WIN.w*1.12, WIN.h*1.25*SKY.width/SKY.height), sh=sw*SKY.height/SKY.width;
+  const ox=WIN.x+(WIN.w-sw)/2+par.x*.35, oy=WIN.y+WIN.h-sh*.97+par.y*.25;
+  ctx.drawImage(SKY,ox,oy,sw,sh);
+  // el cielo cae hacia la noche muy despacio
+  const dusk=Math.min(.45,(now-t0)/1000/900*.45); if(dusk>0){ ctx.fillStyle=`rgba(20,14,40,${dusk})`; ctx.fillRect(WIN.x,WIN.y,WIN.w,WIN.h); }
   // la estela se acumula muy lento, como en una larga exposición
-  if(frame%5===0 && B.n){ path.push(CEN.x,CEN.y,CEN.z); if(path.length>2400) path.splice(0,3); }
+  if(!inGap && frame%5===0 && B.n){ path.push(CEN.x,CEN.y,CEN.z); if(path.length>2400) path.splice(0,3); }
   if(showRoute && path.length>6){
     ctx.lineCap="round"; ctx.lineJoin="round";
     const N=path.length/3;
@@ -379,32 +371,25 @@ function drawSkyAndFlock(now){
   ctx.restore();
 }
 
-/* ======== Polvo en la luz y respiración del cuarto ======== */
-const dust=[...Array(60)].map(()=>({x:Math.random(),y:Math.random(),v:.02+Math.random()*.05,a:Math.random()*6.28}));
+/* ======== Polvo en la luz ======== */
+const dust=[...Array(70)].map(()=>({x:Math.random(),y:Math.random(),v:.02+Math.random()*.05,a:Math.random()*6.28}));
 function drawRoomLight(now){
-  ctx.drawImage(roomC,0,0,W,H);
-  // franjas de luz que la persiana proyecta sobre el alféizar
-  const open=Math.max(blind.tilt,blind.raise);
-  ctx.save(); ctx.globalAlpha=.18+.25*open; ctx.fillStyle="#f2b277";
-  const sl=SL(), f=Math.max(10,WIN.w*.022);
-  for(let i=0;i<6;i++){ ctx.fillRect(WIN.x-f*2, WIN.y+WIN.h+f*1.4+i*sl*.35, WIN.w+f*4, sl*.12*(.3+open)); }
-  ctx.restore();
-  ctx.fillStyle="rgba(255,214,170,.35)";
-  for(const d of dust){ d.y-=d.v*.002; d.a+=.01; if(d.y<0)d.y=1; const x=WIN.x-WIN.w*.1+d.x*WIN.w*1.2+Math.sin(d.a)*6, y=WIN.y+d.y*WIN.h*1.25; ctx.globalAlpha=.25+.25*Math.sin(d.a*2); ctx.fillRect(x,y,1.3,1.3);} ctx.globalAlpha=1;
-  // viñeta
-  const g=ctx.createRadialGradient(W/2,H/2,Math.min(W,H)*.35,W/2,H/2,Math.max(W,H)*.75); g.addColorStop(0,"rgba(0,0,0,0)"); g.addColorStop(1,"rgba(0,0,0,.55)"); ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle="rgba(255,214,170,.5)";
+  for(const d of dust){ d.y-=d.v*.0015; d.a+=.01; if(d.y<0)d.y=1; const x=WIN.x-WIN.w*.15+d.x*WIN.w*1.3+Math.sin(d.a)*6, y=WIN.y-WIN.h*.1+d.y*WIN.h*1.3; ctx.globalAlpha=.18+.18*Math.sin(d.a*2); ctx.fillRect(x,y,1.2,1.2);} ctx.globalAlpha=1;
+  const g=ctx.createRadialGradient(W/2,H/2,Math.min(W,H)*.32,W/2,H/2,Math.max(W,H)*.78); g.addColorStop(0,"rgba(0,0,0,0)"); g.addColorStop(1,"rgba(0,0,0,.6)"); ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
 }
 
 /* ======== Bucle ======== */
-let frame=0;
+let frame=0, t0=performance.now();
 function loop(now){
   frame++;
-  blind.tilt+=(blind.tiltT-blind.tilt)*.08; blind.raise+=(blind.raiseT-blind.raise)*.025; blind.wobble*=.96;
+  // resorte de la lama: baja con el dedo y vuelve sola al soltarla
+  pull.v+=(pull.dT-pull.d)*.09; pull.v*=.74; pull.d=Math.max(0,pull.d+pull.v);
+  blind.raise+=(blind.raiseT-blind.raise)*.018;
   par.x+=(par.tx-par.x)*.05; par.y+=(par.ty-par.y)*.05;
   stepFlock(now);
-  ctx.fillStyle="#0d0b10"; ctx.fillRect(0,0,W,H);
-  drawSkyAndFlock(now);
-  drawBlind(now);
+  ctx.fillStyle="#0e0a0c"; ctx.fillRect(0,0,W,H);
+  if(ready>=2){ drawBackdrop(); if(blind.raise>.002) drawSkyAndFlock(now); else if(frame%5===0&&B.n){ path.push(CEN.x,CEN.y,CEN.z); if(path.length>2400) path.splice(0,3); } drawRoom(); drawSlats(); }
   drawRoomLight(now);
   if(recording) drawRecStamp();
   requestAnimationFrame(loop);
@@ -413,15 +398,19 @@ function loop(now){
 /* ======== Interacción: girar las lamas, tocar el cielo ======== */
 let down=null;
 const inWin=(x,y)=>x>WIN.x&&x<WIN.x+WIN.w&&y>WIN.y&&y<WIN.y+WIN.h;
-cv.addEventListener("pointermove",e=>{ par.tx=(e.clientX/W-.5)*-26; par.ty=(e.clientY/H-.5)*-16;
-  if(down){ const dy=e.clientY-down.y; if(Math.abs(dy)>6) down.moved=true; if(down.moved){ blind.tiltT=Math.max(0,Math.min(MAX_TILT(),down.tilt+dy/(WIN.h*.7))); blind.wobble=1; } }
-  cv.style.cursor=inWin(e.clientX,e.clientY)?(down&&down.moved?"grabbing":"crosshair"):"default"; });
+const MAXD=()=>PITCH()*1.55; // se ve solo una franja de cielo
+function nearestBound(y){ let bi=1,bd=1e9; for(let i=1;i<R.bounds.length-1;i++){ const d=Math.abs(syp(R.bounds[i])-y); if(d<bd){bd=d;bi=i;} } return bi; }
+cv.addEventListener("pointermove",e=>{ par.tx=(e.clientX/W-.5)*-22; par.ty=(e.clientY/H-.5)*-12;
+  if(down){ const dy=e.clientY-down.y, dx=e.clientX-down.x; if(Math.hypot(dx,dy)>7) down.moved=true;
+    if(down.moved && blind.raise<.05){ pull.x=Math.max(WIN.x+WIN.w*.08,Math.min(WIN.x+WIN.w*.86,e.clientX)); pull.dT=Math.max(0,Math.min(MAXD(),dy)); } }
+  cv.style.cursor=inWin(e.clientX,e.clientY)?(down&&down.moved?"grabbing":"grab"):"default"; });
 let enteredAt=0;
-cv.addEventListener("pointerdown",e=>{ if(!document.body.classList.contains("inside")||performance.now()-enteredAt<900) return; down={x:e.clientX,y:e.clientY,tilt:blind.tiltT,moved:false}; cv.setPointerCapture(e.pointerId); });
-cv.addEventListener("pointerup",e=>{ const d=down; down=null; if(!d||d.moved) return; if(inWin(e.clientX,e.clientY)) openWrite(e.clientX,e.clientY); });
-cv.addEventListener("wheel",e=>{ blind.tiltT=Math.max(0,Math.min(MAX_TILT(),blind.tiltT+e.deltaY/900)); blind.wobble=1; },{passive:true});
-// los visitantes solo abren rendijas; levantar la persiana entera es un gesto de la sala
-const MAX_TILT=()=>.92;
+cv.addEventListener("pointerdown",e=>{ if(!document.body.classList.contains("inside")||performance.now()-enteredAt<900) return; if(!inWin(e.clientX,e.clientY)) return;
+  down={x:e.clientX,y:e.clientY,moved:false}; if(pull.d<2){ pull.i=nearestBound(e.clientY); pull.x=e.clientX; } cv.setPointerCapture(e.pointerId); });
+function release(){ pull.dT=0; }
+cv.addEventListener("pointerup",e=>{ const d=down; down=null; release(); if(!d||d.moved) return; if(guideStep===1) return; openWrite(e.clientX,e.clientY); });
+cv.addEventListener("pointercancel",()=>{ down=null; release(); });
+let wheelT=0; cv.addEventListener("wheel",e=>{ if(blind.raise>.05) return; if(pull.d<2){ pull.i=nearestBound(e.clientY); pull.x=e.clientX; } pull.dT=Math.max(0,Math.min(MAXD(),pull.dT+e.deltaY*.25)); clearTimeout(wheelT); wheelT=setTimeout(release,900); },{passive:true});
 let tap=null;
 function openWrite(x,y){ const [nx,ny]=[(x-WIN.x)/WIN.w,(y-WIN.y)/WIN.h]; tap={x:nx,y:Math.min(.8,ny)}; const w=$("write"); w.classList.add("show"); const hw=w.offsetWidth/2+10; w.style.left=Math.min(W-hw,Math.max(hw,x))+"px"; w.style.top=Math.max(96,y)+"px"; $("word").value=""; setTimeout(()=>$("word").focus(),30); if(guideStep===3) nextGuide(); }
 document.addEventListener("keydown",e=>{ if(e.key==="Escape"){ $("write").classList.remove("show"); document.querySelectorAll(".sheet").forEach(s=>s.classList.remove("open")); } });
@@ -509,16 +498,16 @@ let armed=0; $("hClear").onclick=async()=>{ if(Date.now()-armed>3000){ armed=Dat
 /* ======== Entrada y guía ======== */
 const GUIDE=[
   ["Estás en un cuarto en penumbra. Afuera cae la tarde.","Piensa en un cuarto donde hayas estado encerrada o encerrado, y en lo que deseabas afuera."],
-  ["Arrastra hacia abajo sobre la persiana para abrir las rendijas. Hacia arriba, para cerrarlas.","Mirar entre las lamas: ver sin que te vean del todo."],
-  ["Entre las rendijas vuela una bandada de estorninos. Nadie la dirige: cada pájaro sigue a sus vecinos.",""],
-  ["Toca un punto del cielo y escribe una palabra. Se convertirá en estorninos.","¿Qué palabra te sacaría de este cuarto?"],
+  ["Pon el dedo sobre una lama y arrástrala hacia abajo, como cuando uno se asoma. Verás solo un pedazo de cielo. Al soltarla, vuelve a su lugar.","Mirar sin ser vista del todo. Quizás ahora no pase nada por ahí."],
+  ["Afuera vuela una bandada de estorninos. Nadie la dirige: cada pájaro sigue a sus vecinos. A veces cruza tu rendija, a veces no.",""],
+  ["Toca la persiana sin arrastrar y escribe una palabra. Del otro lado, en ese punto del cielo, nacen sus estorninos.","¿Qué palabra te sacaría de este cuarto?"],
   ["Cada palabra vuela según sus letras: sus vocales, sus consonantes, sus tildes. Las reglas están en «Reglas».","Fíjate en qué palabras terminan volando juntas."],
   ["Donde tocas el cielo, la bandada pasará. La ruta migratoria la trazamos entre todos.","Puedes ver la bandada como palabras, ocultar la ruta o grabar el vuelo."]
 ];
 let guideStep=-1;
 function renderGuide(){ const g=GUIDE[guideStep]; $("gText").textContent=g[0]; $("gThink").textContent=g[1]; $("gThink").style.display=g[1]?"block":"none";
   $("gDots").innerHTML=GUIDE.map((_,i)=>`<span class="${i===guideStep?"on":""}"></span>`).join(""); $("gNext").textContent=guideStep===GUIDE.length-1?"Empezar":"Seguir"; $("guide").classList.add("show");
-  if(guideStep===1){ blind.tiltT=.55; blind.wobble=1; } }
+  if(guideStep===1){ pull.i=8; pull.x=WIN.x+WIN.w*.5; pull.dT=MAXD()*.8; setTimeout(release,1800); } }
 function startGuide(){ guideStep=0; renderGuide(); }
 function nextGuide(){ guideStep++; if(guideStep>=GUIDE.length){ $("guide").classList.remove("show"); guideStep=-1; store.set("guided",true); return; } renderGuide(); }
 $("gNext").onclick=nextGuide; $("gSkip").onclick=()=>{ guideStep=GUIDE.length; nextGuide(); };
@@ -527,6 +516,8 @@ $("enter").onclick=()=>{ enteredAt=performance.now(); $("gate").classList.add("g
   setTimeout(()=>{ if(!SALA) startGuide(); else hint("Sala abierta. Comparte el QR."); },1400); };
 
 addEventListener("resize",resize);
+const onImg=()=>{ ready++; if(ready>=2){ $("enter").disabled=false; $("enter").textContent="Entrar al cuarto"; } };
+ROOM.onload=onImg; SKY.onload=onImg; ROOM.src="img/cuarto.jpg"; SKY.src="img/cielo.jpg";
 resize(); seedFlock(); requestAnimationFrame(loop); load(); setInterval(load,POLL_MS);
 </script>
 </body>
