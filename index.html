@@ -416,13 +416,14 @@ const inWin=(x,y)=>x>WIN.x&&x<WIN.x+WIN.w&&y>WIN.y&&y<WIN.y+WIN.h;
 cv.addEventListener("pointermove",e=>{ par.tx=(e.clientX/W-.5)*-26; par.ty=(e.clientY/H-.5)*-16;
   if(down){ const dy=e.clientY-down.y; if(Math.abs(dy)>6) down.moved=true; if(down.moved){ blind.tiltT=Math.max(0,Math.min(MAX_TILT(),down.tilt+dy/(WIN.h*.7))); blind.wobble=1; } }
   cv.style.cursor=inWin(e.clientX,e.clientY)?(down&&down.moved?"grabbing":"crosshair"):"default"; });
-cv.addEventListener("pointerdown",e=>{ if(!document.body.classList.contains("inside")) return; down={x:e.clientX,y:e.clientY,tilt:blind.tiltT,moved:false}; cv.setPointerCapture(e.pointerId); });
+let enteredAt=0;
+cv.addEventListener("pointerdown",e=>{ if(!document.body.classList.contains("inside")||performance.now()-enteredAt<900) return; down={x:e.clientX,y:e.clientY,tilt:blind.tiltT,moved:false}; cv.setPointerCapture(e.pointerId); });
 cv.addEventListener("pointerup",e=>{ const d=down; down=null; if(!d||d.moved) return; if(inWin(e.clientX,e.clientY)) openWrite(e.clientX,e.clientY); });
 cv.addEventListener("wheel",e=>{ blind.tiltT=Math.max(0,Math.min(MAX_TILT(),blind.tiltT+e.deltaY/900)); blind.wobble=1; },{passive:true});
 // los visitantes solo abren rendijas; levantar la persiana entera es un gesto de la sala
 const MAX_TILT=()=>.92;
 let tap=null;
-function openWrite(x,y){ const [nx,ny]=[(x-WIN.x)/WIN.w,(y-WIN.y)/WIN.h]; tap={x:nx,y:Math.min(.8,ny)}; const w=$("write"); w.style.left=Math.min(W-140,Math.max(140,x))+"px"; w.style.top=Math.max(96,y)+"px"; w.classList.add("show"); $("word").value=""; setTimeout(()=>$("word").focus(),30); if(guideStep===3) nextGuide(); }
+function openWrite(x,y){ const [nx,ny]=[(x-WIN.x)/WIN.w,(y-WIN.y)/WIN.h]; tap={x:nx,y:Math.min(.8,ny)}; const w=$("write"); w.classList.add("show"); const hw=w.offsetWidth/2+10; w.style.left=Math.min(W-hw,Math.max(hw,x))+"px"; w.style.top=Math.max(96,y)+"px"; $("word").value=""; setTimeout(()=>$("word").focus(),30); if(guideStep===3) nextGuide(); }
 document.addEventListener("keydown",e=>{ if(e.key==="Escape"){ $("write").classList.remove("show"); document.querySelectorAll(".sheet").forEach(s=>s.classList.remove("open")); } });
 const mine=new Set(store.get("mine",[]));
 $("wform").addEventListener("submit",async e=>{
@@ -521,7 +522,7 @@ function renderGuide(){ const g=GUIDE[guideStep]; $("gText").textContent=g[0]; $
 function startGuide(){ guideStep=0; renderGuide(); }
 function nextGuide(){ guideStep++; if(guideStep>=GUIDE.length){ $("guide").classList.remove("show"); guideStep=-1; store.set("guided",true); return; } renderGuide(); }
 $("gNext").onclick=nextGuide; $("gSkip").onclick=()=>{ guideStep=GUIDE.length; nextGuide(); };
-$("enter").onclick=()=>{ $("gate").classList.add("gone"); document.body.classList.add("inside");
+$("enter").onclick=()=>{ enteredAt=performance.now(); $("gate").classList.add("gone"); document.body.classList.add("inside");
   if(!SALA && document.documentElement.requestFullscreen && matchMedia("(pointer:fine)").matches) document.documentElement.requestFullscreen().catch(()=>{});
   setTimeout(()=>{ if(!SALA) startGuide(); else hint("Sala abierta. Comparte el QR."); },1400); };
 
